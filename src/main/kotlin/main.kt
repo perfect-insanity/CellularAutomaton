@@ -273,16 +273,23 @@ fun dialogContentComponent(
             }
         }
         Type.ELEMENTARY -> {
-            formControlLabel {
-                attrs {
-                    label = "0${nbsp}/${nbsp}1${nbsp}→${nbsp}1:"
-                    labelPlacement = "start"
-                    control = styledSpan {
-                        css {
-                            marginLeft = 16.px
-                        }
-                        selectedType.possibleValues.forEach { condition: Any ->
-                            child(checkboxComponent(conditions[true]!!, condition) { (it as Int).toBinaryString(3) })
+            div {
+                formControlLabel {
+                    attrs {
+                        label = "0${nbsp}/${nbsp}1${nbsp}→${nbsp}1:"
+                        labelPlacement = "start"
+                        control = styledSpan {
+                            css {
+                                marginLeft = 16.px
+                            }
+                            selectedType.possibleValues.forEach { condition: Any ->
+                                child(
+                                    checkboxComponent(
+                                        conditions[true]!!,
+                                        condition
+                                    ) { (it as Int).toBinaryString(3) }
+                                )
+                            }
                         }
                     }
                 }
