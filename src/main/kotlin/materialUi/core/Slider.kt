@@ -1,7 +1,7 @@
 @file:JsModule("@material-ui/core/Slider")
 @file:JsNonModule
 
-package jsModules
+package materialUi.core
 
 import org.w3c.dom.events.Event
 import react.*

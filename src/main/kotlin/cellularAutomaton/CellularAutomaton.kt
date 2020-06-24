@@ -1,4 +1,4 @@
-package automaton
+package cellularAutomaton
 
 abstract class CellularAutomaton(width: Int, height: Int) {
     val tor = Tor(width, height)
@@ -9,10 +9,6 @@ abstract class CellularAutomaton(width: Int, height: Int) {
     abstract fun nextGeneration(): NextGeneration
 
     fun restructure(): Boolean {
-        if (tor.liveCells.isEmpty()) {
-            return false
-        }
-
         val (mustDie, mustBorn) = nextGeneration()
         val newGenLiveCells = HashSet(tor.liveCells)
 
@@ -30,8 +26,6 @@ abstract class CellularAutomaton(width: Int, height: Int) {
         else {
             tor.liveCells = newGenLiveCells
             generation++
-            if (newGenLiveCells.isEmpty())
-                return false
         }
 
         return true

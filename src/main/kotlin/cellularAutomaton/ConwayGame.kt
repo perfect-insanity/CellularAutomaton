@@ -1,4 +1,4 @@
-package automaton
+package cellularAutomaton
 
 class ConwayGame(
         width: Int, height: Int,

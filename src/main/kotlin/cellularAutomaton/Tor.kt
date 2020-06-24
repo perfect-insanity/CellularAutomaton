@@ -1,4 +1,4 @@
-package automaton
+package cellularAutomaton
 
 class Tor(width: Int, height: Int) {
     val cells: MutableList<MutableList<Cell>> = mutableListOf()

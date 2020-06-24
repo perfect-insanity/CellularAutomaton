@@ -1,8 +1,8 @@
-package automaton
+package cellularAutomaton
 
 class Elementary(
         private val width: Int, private val height: Int,
-        val deathCondition: (List<Int>) -> Boolean, val birthCondition: (List<Int>) -> Boolean
+        val oneCondition: (Int) -> Boolean
 ) : CellularAutomaton(width, height) {
     override fun nextGeneration(): NextGeneration {
         val mustDie = HashSet<Cell>()
@@ -11,13 +11,14 @@ class Elementary(
             for (j in 0 until height) {
                 val cell = tor[i, j]
                 val neighbors = getNeighbors(cell)
-                val seq = mutableListOf<Int>()
+                var seq = 0
                 for (neighbor in neighbors) {
+                    seq *= 2
                     seq += if (neighbor.isAlive) 1 else 0
                 }
-                if (cell.isAlive && deathCondition(seq))
+                if (cell.isAlive && !oneCondition(seq))
                     mustDie.add(cell)
-                else if (!cell.isAlive && birthCondition(seq))
+                else if (!cell.isAlive && oneCondition(seq))
                     mustBorn.add(cell)
             }
         }

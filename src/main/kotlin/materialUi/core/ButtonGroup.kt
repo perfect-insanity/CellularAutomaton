@@ -1,7 +1,7 @@
 @file:JsModule("@material-ui/core/ButtonGroup")
 @file:JsNonModule
 
-package jsModules
+package materialUi.core
 
 import react.*
 
