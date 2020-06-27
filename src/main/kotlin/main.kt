@@ -1,6 +1,7 @@
 import cellularAutomaton.CellularAutomaton
 import cellularAutomaton.ConwayGame
 import cellularAutomaton.Elementary
+import kotlinext.js.jsObject
 import kotlinx.css.*
 import materialUi.core.*
 import org.w3c.dom.CanvasRenderingContext2D
@@ -26,9 +27,11 @@ const val FIELD_WIDTH = 160
 const val FIELD_HEIGHT = 80
 val colorByState = mapOf(true to "#ffffff", false to "#000000")
 
+var timeout: Int? = null
 var delay = DEFAULT_DELAY
 var currentType = Type.CONWAY
 var automaton: CellularAutomaton = currentType.instance()
+var generation = 1
 val canvas = document.getElementById("mainCanvas") as HTMLCanvasElement
 val context = canvas.getContext("2d") as CanvasRenderingContext2D
 
@@ -38,27 +41,71 @@ enum class Type {
         override val possibleValues = 0..8
         override var conditions: Map<Boolean, MutableList<Any>> =
             mapOf(true to mutableListOf<Any>(3), false to mutableListOf<Any>(0, 1, 4, 5, 6, 7, 8))
+        override var checkboxesLabelComponent = functionalComponent<CheckboxesLabelProps> { props ->
+            for ((k, v) in props.conditions) {
+                div {
+                    formControlLabel {
+                        attrs {
+                            label = if (k)
+                                "0${nbsp}→${nbsp}1:"
+                            else
+                                "1${nbsp}→${nbsp}0:"
+                            labelPlacement = "start"
+                            control = styledSpan {
+                                css {
+                                    marginLeft = 16.px
+                                }
+                                possibleValues.forEach { value: Any ->
+                                    child(rulesCheckboxComponent(v, value, Any::toString))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         override fun instance() = ConwayGame(
             FIELD_WIDTH, FIELD_HEIGHT,
             { it in conditions[false]!! },
             { it in conditions[true]!! }
         )
-
     },
     ELEMENTARY {
         override val automatonName = "Элементарный автомат"
         override val possibleValues = 0..7
         override var conditions: Map<Boolean, MutableList<Any>> =
             mapOf(true to mutableListOf<Any>(0b110, 0b100, 0b011, 0b001))
+        override var checkboxesLabelComponent = functionalComponent<CheckboxesLabelProps> { props ->
+            div {
+                formControlLabel {
+                    attrs {
+                        label = "0${nbsp}/${nbsp}1${nbsp}→${nbsp}1:"
+                        labelPlacement = "start"
+                        control = styledSpan {
+                            css {
+                                marginLeft = 16.px
+                            }
+                            possibleValues.forEach { value: Any ->
+                                child(
+                                    rulesCheckboxComponent(props.conditions[true]!!, value) {
+                                        (it as Int).toBinaryString(3)
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         override fun instance() = Elementary(FIELD_WIDTH, FIELD_HEIGHT) { it in conditions[true]!! }
-
     };
 
     abstract val automatonName: String
     abstract val possibleValues: Iterable<Any>
     abstract var conditions: Map<Boolean, MutableList<Any>>
+    abstract var checkboxesLabelComponent: FunctionalComponent<CheckboxesLabelProps>
 
     abstract fun instance(): CellularAutomaton
 }
@@ -86,19 +133,61 @@ fun main() {
         }
     })
 
-    var timeout: Int? = null
+    render(document.getElementById("main")) {
+        child(mainComponent)
+    }
+}
 
-    val mainDiv = functionalComponent<RProps> {
-        val (startButtonText, setStartButtonText) = useState("Старт")
-        val (isOpened, setOpened) = useState(false)
+val mainComponent = functionalComponent<RProps> {
+    val (isDialogOpened, openDialog) = useState(false)
 
+    child(menuComponent, jsObject {
+        this.openDialog = openDialog
+    })
+    child(rulesDialogComponent, jsObject {
+        this.isDialogOpened = isDialogOpened
+        this.openDialog = openDialog
+    })
+}
+
+interface MenuProps : RProps {
+    var openDialog: RSetState<Boolean>
+}
+
+val menuComponent = functionalComponent<MenuProps> { props ->
+    styledDiv {
+        val (generationText, setGenerationText) = useState(1)
+        css {
+            marginBottom = 8.px
+        }
+        child(menuButtonGroupComponent, jsObject {
+            this.openDialog = props.openDialog
+            this.setGenerationText = setGenerationText
+        })
+        child(delaySliderComponent)
+        child(counterComponent, jsObject {
+            this.generationText = generationText
+        })
+    }
+}
+
+interface MenuButtonGroupProps : RProps {
+    var openDialog: RSetState<Boolean>
+    var setGenerationText: RSetState<Int>
+}
+
+val menuButtonGroupComponent = functionalComponent<MenuButtonGroupProps> { props ->
+    buttonGroup {
+        val buttonTextVariants = mapOf(true to "Старт", false to "Стоп")
+        val (startButtonText, setStartButtonText) = useState(buttonTextVariants[timeout == null]!!)
         val repeat = { action: () -> Unit ->
-            setStartButtonText("Стоп")
+            setStartButtonText(buttonTextVariants[false]!!)
+            props.setGenerationText(++generation)
             timeout = window.setTimeout(action, delay)
         }
         val finish = {
             if (timeout != null) {
-                setStartButtonText("Старт")
+                setStartButtonText(buttonTextVariants[true]!!)
                 window.clearTimeout(timeout!!)
                 timeout = null
             }
@@ -113,81 +202,109 @@ fun main() {
             else
                 finish()
         }
-
-        styledDiv {
-            css {
-                marginBottom = 8.px
-            }
-            buttonGroup {
-                attrs {
-                    variant = "text"
-                    component = "span"
-                }
-                button {
-                    attrs {
-                        onClick = {
-                            if (timeout == null)
-                                repaint()
-                            else
-                                finish()
-                        }
-                    }
-                    +startButtonText
-                }
-                button {
-                    attrs {
-                        onClick = {
-                            finish()
-                            automaton.tor.killAll()
-                            context.paint(automaton)
-                        }
-                    }
-                    +"Очистить"
-                }
-                button {
-                    attrs {
-                        onClick = { setOpened(true) }
-                    }
-                    +"Поменять правила"
-                }
-            }
-            child(sliderComponent())
+        attrs {
+            variant = "text"
+            component = "span"
         }
-        child(dialogComponent(isOpened, setOpened))
-    }
-
-    render(document.getElementById("main")) {
-        child(mainDiv)
+        button {
+            attrs {
+                onClick = {
+                    if (timeout == null)
+                        repaint()
+                    else
+                        finish()
+                }
+            }
+            +startButtonText
+        }
+        button {
+            attrs {
+                onClick = {
+                    finish()
+                    automaton.tor.killAll()
+                    context.paint(automaton)
+                    generation = 1
+                    props.setGenerationText(generation)
+                }
+            }
+            +"Очистить"
+        }
+        button {
+            attrs {
+                onClick = { props.openDialog(true) }
+            }
+            +"Поменять правила"
+        }
     }
 }
 
-fun getCellByCoord(x: Double, y: Double, side: Double) = (x / side).toInt() to (y / side).toInt()
+val delaySliderComponent = functionalComponent<RProps> {
+    styledSpan {
+        css {
+            display = Display.inlineBlock
+            width = LinearDimension("25%")
+            marginLeft = 16.px
+            verticalAlign = VerticalAlign.middle
+        }
+        slider {
+            attrs {
+                defaultValue = delay
+                step = DELAY_SLIDER_STEP
+                min = MIN_DELAY
+                max = MAX_DELAY
+                valueLabelDisplay = "off"
+                onChange = { _, value ->
+                    delay = value
+                }
+            }
+        }
+    }
+}
 
-fun dialogComponent(
-    isOpened: Boolean,
-    setOpened: RSetState<Boolean>
-) = functionalComponent<RProps> {
+interface CounterProps : RProps {
+    var generationText: Int
+}
+
+val counterComponent = functionalComponent<CounterProps> { props ->
+    styledSpan {
+        css {
+            marginLeft = 16.px
+        }
+        +props.generationText.toString()
+    }
+}
+
+interface RulesDialogProps : RProps {
+    var isDialogOpened: Boolean
+    var openDialog: RSetState<Boolean>
+}
+
+val rulesDialogComponent = functionalComponent<RulesDialogProps> { props ->
     val (selectedType, selectType) = useState(currentType)
     dialog {
         val conditions = selectedType.conditions.mapValues { it.value.toMutableList() }
         attrs {
-            open = isOpened
-            onClose = {
-                setOpened(false)
-            }
+            open = props.isDialogOpened
+            onClose = { props.openDialog(false) }
         }
         dialogTitle {
             +"Выберите новые правила"
         }
         dialogContent {
-            child(dialogContentComponent(selectedType, selectType, conditions))
+            child(typeSelectComponent, jsObject {
+                this.selectedType = selectedType
+                this.selectType = selectType
+            })
+            child(selectedType.checkboxesLabelComponent, jsObject {
+                this.conditions = conditions
+            })
         }
         dialogActions {
             button {
                 attrs {
                     color = "primary"
                     onClick = {
-                        setOpened(false)
+                        props.openDialog(false)
                     }
                 }
                 +"Отмена"
@@ -199,10 +316,11 @@ fun dialogComponent(
                         if (selectedType != currentType) {
                             currentType = selectedType
                             automaton = currentType.instance()
+                            context.paint(automaton)
                         }
                         currentType.conditions = conditions.mapValues { it.value.toMutableList() }
 
-                        setOpened(false)
+                        props.openDialog(false)
                     }
                 }
                 +"ОК"
@@ -211,11 +329,12 @@ fun dialogComponent(
     }
 }
 
-fun dialogContentComponent(
-    selectedType: Type,
-    selectType: RSetState<Type>,
-    conditions: Map<Boolean, MutableList<Any>>
-) = functionalComponent<RProps> {
+interface TypeSelectProps : RProps {
+    var selectedType: Type
+    var selectType: RSetState<Type>
+}
+
+val typeSelectComponent = functionalComponent<TypeSelectProps> { props ->
     formControlLabel {
         attrs {
             label = "Тип автомата:"
@@ -231,14 +350,14 @@ fun dialogContentComponent(
                     }
                     select {
                         attrs {
-                            value = selectedType.automatonName
+                            value = props.selectedType.automatonName
                             autoWidth = true
                         }
                         for (type in Type.values()) {
                             menuItem {
                                 attrs {
                                     value = type.automatonName
-                                    onClick = { selectType(type) }
+                                    onClick = { props.selectType(type) }
                                 }
                                 +attrs.value
                             }
@@ -248,60 +367,16 @@ fun dialogContentComponent(
             }
         }
     }
-    when (selectedType) {
-        Type.CONWAY -> {
-            for ((k, v) in conditions) {
-                div {
-                    formControlLabel {
-                        attrs {
-                            label = if (k)
-                                "0${nbsp}→${nbsp}1:"
-                            else
-                                "1${nbsp}→${nbsp}0:"
-                            labelPlacement = "start"
-                            control = styledSpan {
-                                css {
-                                    marginLeft = 16.px
-                                }
-                                selectedType.possibleValues.forEach { condition: Any ->
-                                    child(checkboxComponent(v, condition))
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        Type.ELEMENTARY -> {
-            div {
-                formControlLabel {
-                    attrs {
-                        label = "0${nbsp}/${nbsp}1${nbsp}→${nbsp}1:"
-                        labelPlacement = "start"
-                        control = styledSpan {
-                            css {
-                                marginLeft = 16.px
-                            }
-                            selectedType.possibleValues.forEach { condition: Any ->
-                                child(
-                                    checkboxComponent(
-                                        conditions[true]!!,
-                                        condition
-                                    ) { (it as Int).toBinaryString(3) }
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
 }
 
-fun checkboxComponent(
+interface CheckboxesLabelProps : RProps {
+    var conditions: Map<Boolean, MutableList<Any>>
+}
+
+fun rulesCheckboxComponent(
     values: MutableList<Any>,
     value: Any,
-    toString: (Any) -> String = Any::toString
+    getLabel: (Any) -> String
 ) = functionalComponent<RProps> {
     styledSpan {
         css {
@@ -309,7 +384,7 @@ fun checkboxComponent(
         }
         formControlLabel {
             attrs {
-                label = toString(value)
+                label = getLabel(value)
                 control = checkbox {
                     val (isChecked, setChecked) = useState(value in values)
                     attrs {
@@ -330,28 +405,7 @@ fun checkboxComponent(
     }
 }
 
-fun sliderComponent() = functionalComponent<RProps> {
-    styledSpan {
-        css {
-            display = Display.inlineBlock
-            width = LinearDimension("25%")
-            marginLeft = 16.px
-            verticalAlign = VerticalAlign.middle
-        }
-        slider {
-            attrs {
-                defaultValue = DEFAULT_DELAY
-                step = DELAY_SLIDER_STEP
-                min = MIN_DELAY
-                max = MAX_DELAY
-                valueLabelDisplay = "off"
-                onChange = { _, value ->
-                    delay = value
-                }
-            }
-        }
-    }
-}
+fun getCellByCoord(x: Double, y: Double, side: Double) = (x / side).toInt() to (y / side).toInt()
 
 fun CanvasRenderingContext2D.paint(automaton: CellularAutomaton) {
     for (i in 0 until FIELD_WIDTH)
