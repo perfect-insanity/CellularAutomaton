@@ -2,8 +2,9 @@ package cellularAutomaton
 
 class ConwayGame(
         width: Int, height: Int,
+        tor: Tor,
         val deathCondition: (Int) -> Boolean, val birthCondition: (Int) -> Boolean
-) : CellularAutomaton(width, height) {
+) : CellularAutomaton(width, height, tor) {
 
     override fun nextGeneration(): NextGeneration {
         val mustDie = mutableSetOf<Cell>()

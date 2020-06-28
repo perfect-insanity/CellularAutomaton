@@ -1,7 +1,6 @@
 package cellularAutomaton
 
-abstract class CellularAutomaton(width: Int, height: Int) {
-    val tor = Tor(width, height)
+abstract class CellularAutomaton(width: Int, height: Int, val tor: Tor = Tor(width, height)) {
     private var generation = 1
 
     data class NextGeneration(val mustDie: MutableSet<Cell>, val mustBorn: MutableSet<Cell>)

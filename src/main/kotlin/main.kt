@@ -1,6 +1,7 @@
 import cellularAutomaton.CellularAutomaton
 import cellularAutomaton.ConwayGame
 import cellularAutomaton.Elementary
+import cellularAutomaton.Tor
 import kotlinext.js.jsObject
 import kotlinx.css.*
 import materialUi.core.*
@@ -65,10 +66,10 @@ enum class Type {
             }
         }
 
-        override fun instance() = ConwayGame(
+        override fun instance(tor: Tor) = ConwayGame(
             FIELD_WIDTH, FIELD_HEIGHT,
-            { it in conditions[false]!! },
-            { it in conditions[true]!! }
+            tor,
+            { it in conditions[false]!! }, { it in conditions[true]!! }
         )
     },
     ELEMENTARY {
@@ -99,7 +100,10 @@ enum class Type {
             }
         }
 
-        override fun instance() = Elementary(FIELD_WIDTH, FIELD_HEIGHT) { it in conditions[true]!! }
+        override fun instance(tor: Tor) = Elementary(
+            FIELD_WIDTH, FIELD_HEIGHT,
+            tor
+        ) { it in conditions[true]!! }
     };
 
     abstract val automatonName: String
@@ -107,7 +111,7 @@ enum class Type {
     abstract var conditions: Map<Boolean, MutableList<Any>>
     abstract var checkboxesLabelComponent: FunctionalComponent<CheckboxesLabelProps>
 
-    abstract fun instance(): CellularAutomaton
+    abstract fun instance(tor: Tor = Tor(FIELD_WIDTH, FIELD_HEIGHT)): CellularAutomaton
 }
 
 fun main() {
@@ -325,7 +329,7 @@ val rulesDialogComponent = functionalComponent<RulesDialogProps> { props ->
                     onClick = {
                         if (selectedType != currentType) {
                             currentType = selectedType
-                            automaton = currentType.instance()
+                            automaton = currentType.instance(automaton.tor)
                             context.paint(automaton)
                         }
                         currentType.conditions = conditions.mapValues { it.value.toMutableList() }

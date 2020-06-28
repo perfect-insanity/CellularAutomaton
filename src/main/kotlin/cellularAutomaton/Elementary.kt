@@ -2,8 +2,9 @@ package cellularAutomaton
 
 class Elementary(
         private val width: Int, private val height: Int,
+        tor: Tor,
         val oneCondition: (Int) -> Boolean
-) : CellularAutomaton(width, height) {
+) : CellularAutomaton(width, height, tor) {
     override fun nextGeneration(): NextGeneration {
         val mustDie = HashSet<Cell>()
         val mustBorn = HashSet<Cell>()
