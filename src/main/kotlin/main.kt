@@ -117,21 +117,31 @@ fun main() {
     }
 
     context.paint(automaton)
-    canvas.addEventListener("click", { event ->
-        if (event is MouseEvent) {
-            context.apply {
-                val (x, y) = getCellByCoord(event.offsetX, event.offsetY, SIDE)
-                val cell = automaton.tor[x, y]
-                if (cell.isAlive)
-                    automaton.tor.killCell(cell)
-                else
-                    automaton.tor.animateCell(cell)
+    canvas.apply {
+        var isMouseDown = false
+        var lastCellCoords: Pair<Int, Int>? = null
 
-                fillStyle = colorByState[cell.isAlive]
-                fillRect(x * SIDE, y * SIDE, SIDE, SIDE)
+        addEventListener("mousedown", { event ->
+            isMouseDown = true
+            if (event is MouseEvent) {
+                lastCellCoords = getCellByCoords(event.offsetX, event.offsetY, SIDE)
+                context.paint(lastCellCoords!!)
             }
-        }
-    })
+        })
+        addEventListener("mouseup", {
+            isMouseDown = false
+            lastCellCoords = null
+        })
+        addEventListener("mousemove", { event ->
+            if (event is MouseEvent && isMouseDown) {
+                val curCellCoords = getCellByCoords(event.offsetX, event.offsetY, SIDE)
+                if (curCellCoords != lastCellCoords) {
+                    lastCellCoords = curCellCoords
+                    context.paint(curCellCoords)
+                }
+            }
+        })
+    }
 
     render(document.getElementById("main")) {
         child(mainComponent)
@@ -405,7 +415,19 @@ fun rulesCheckboxComponent(
     }
 }
 
-fun getCellByCoord(x: Double, y: Double, side: Double) = (x / side).toInt() to (y / side).toInt()
+fun getCellByCoords(x: Double, y: Double, side: Double) = (x / side).toInt() to (y / side).toInt()
+
+fun CanvasRenderingContext2D.paint(coords: Pair<Int, Int>) {
+    val (x, y) = coords
+    val cell = automaton.tor[x, y]
+    if (cell.isAlive)
+        automaton.tor.killCell(cell)
+    else
+        automaton.tor.animateCell(cell)
+
+    fillStyle = colorByState[cell.isAlive]
+    fillRect(x * SIDE, y * SIDE, SIDE, SIDE)
+}
 
 fun CanvasRenderingContext2D.paint(automaton: CellularAutomaton) {
     for (i in 0 until FIELD_WIDTH)
