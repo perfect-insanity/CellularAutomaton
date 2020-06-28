@@ -7,6 +7,7 @@ import kotlinx.css.*
 import materialUi.core.*
 import org.w3c.dom.CanvasRenderingContext2D
 import org.w3c.dom.HTMLCanvasElement
+import org.w3c.dom.events.Event
 import org.w3c.dom.events.MouseEvent
 import react.*
 import react.dom.div
@@ -132,10 +133,14 @@ fun main() {
                 context.paint(lastCellCoords!!)
             }
         })
-        addEventListener("mouseup", {
+
+        val onMouseUpOrLeave: (Event) -> Unit = {
             isMouseDown = false
             lastCellCoords = null
-        })
+        }
+        addEventListener("mouseup", onMouseUpOrLeave)
+        addEventListener("mouseleave", onMouseUpOrLeave)
+
         addEventListener("mousemove", { event ->
             if (event is MouseEvent && isMouseDown) {
                 val curCellCoords = getCellByCoords(event.offsetX, event.offsetY, SIDE)
