@@ -1,8 +1,6 @@
 import cellularAutomaton.*
 import kotlinext.js.jsObject
 import kotlinx.css.*
-import kotlinx.html.InputType
-import kotlinx.html.id
 import kotlinx.serialization.json.*
 import materialUi.core.*
 import org.w3c.dom.CanvasRenderingContext2D
@@ -17,8 +15,6 @@ import org.w3c.files.FileReader
 import org.w3c.files.get
 import react.*
 import react.dom.div
-import react.dom.input
-import react.dom.label
 import react.dom.render
 import styled.css
 import styled.styledDiv
@@ -35,8 +31,10 @@ const val DELAY_SLIDER_STEP = 10
 const val SIDE = 8.0
 const val FIELD_WIDTH = 160
 const val FIELD_HEIGHT = 80
-val colorByState = mapOf(true to "#ffffff", false to "#000000")
-val colorByStateExport = mapOf(true to "#dcdcdc", false to "#696969")
+val cellColor = mapOf(
+    Mode.DEFAULT to mapOf(true to "#ffffff", false to "#000000"),
+    Mode.EXPORT to mapOf(true to "#aaaaaa", false to "#555555")
+)
 
 val process = AutomatonProcess(Type.CONWAY)
 val canvas = document.getElementById("mainCanvas") as HTMLCanvasElement
@@ -207,19 +205,11 @@ fun main() {
     process.onChangeAutomatonState = {
         context.paint(process.automaton)
     }
+
     canvas.draw()
     render(document.getElementById("main")) {
         child(mainComponent)
     }
-
-    onUploadTextFile { result ->
-        val (type, conditions, cells) = fromJSON(result)
-        for (cell in cells) {
-            process.automaton.tor[cell.i, cell.j] = cell
-        }
-        context.paint(process.automaton)
-    }
-
 }
 
 val mainComponent = functionalComponent<RProps> {
@@ -306,7 +296,6 @@ val menuButtonGroupComponent = functionalComponent<MenuButtonGroupProps> { props
 
         val saveButtonTextVariants = mapOf(true to "Готово", false to "Сохранить")
         val (isSaving, setSaving) = useState(false)
-
         button {
             attrs {
                 onClick = {
@@ -323,25 +312,19 @@ val menuButtonGroupComponent = functionalComponent<MenuButtonGroupProps> { props
             }
             +saveButtonTextVariants[isSaving]!!
         }
-        input {
+        button {
             attrs {
-                id = "download-file"
-                multiple = false
-                accept = "text/plain"
-                type = InputType.file
-            }
-        }
-        label {
-            attrs {
-                htmlFor = "download-file"
-            }
-
-            button {
-                attrs {
-                    onClick = { process.mode = Mode.IMPORT }
+                onClick = {
+                    uploadTextFile { result ->
+                        val (type, conditions, cells) = fromJSON(result)
+                        for (cell in cells) {
+                            process.automaton.tor[cell.i, cell.j] = cell
+                        }
+                        context.paint(process.automaton)
+                    }
                 }
-                +"Загрузить"
             }
+            +"Загрузить"
         }
     }
 }
@@ -529,11 +512,11 @@ fun HTMLCanvasElement.draw() {
                 context.apply {
                     if (cell in process.export) {
                         process.export -= cell
-                        fillStyle = colorByState[cell.isAlive]
+                        fillStyle = cellColor[Mode.DEFAULT]!![cell.isAlive]
                     }
                     else {
                         process.export += cell
-                        fillStyle = colorByStateExport[cell.isAlive]
+                        fillStyle = cellColor[Mode.EXPORT]!![cell.isAlive]
                     }
                     fillRect(lastCellCoords!!.first * SIDE, lastCellCoords!!.second * SIDE, SIDE, SIDE)
                 }
@@ -577,14 +560,14 @@ fun CanvasRenderingContext2D.paint(coords: Pair<Int, Int>) {
     else
         process.automaton.tor.animateCell(cell)
 
-    fillStyle = colorByState[cell.isAlive]
+    fillStyle = cellColor[Mode.DEFAULT]!![cell.isAlive]
     fillRect(x * SIDE, y * SIDE, SIDE, SIDE)
 }
 
 fun CanvasRenderingContext2D.paint(automaton: CellularAutomaton) {
     for (i in 0 until FIELD_WIDTH)
         for (j in 0 until FIELD_HEIGHT) {
-            fillStyle = colorByState[automaton.tor[i, j].isAlive]
+            fillStyle = cellColor[Mode.DEFAULT]!![automaton.tor[i, j].isAlive]
             fillRect(i * SIDE, j * SIDE, SIDE, SIDE)
         }
 }
@@ -630,14 +613,19 @@ fun downloadTextFile(text: String, fileName: String) =
         document.body!!.removeChild(this)
     }
 
-fun onUploadTextFile(onLoad: (String) -> Unit) =
-    (document.getElementById("download-file") as HTMLInputElement).apply {
+fun uploadTextFile(onLoad: (String) -> Unit) {
+    (document.createElement("input") as HTMLInputElement).apply {
+        id = "download-file"
+        multiple = false
+        accept = "text/plain"
+        type = "file"
         onchange = {
             val fileReader = FileReader()
             files!![0]?.let { fileReader.readAsText(it) }
             fileReader.onload = {
                 onLoad(fileReader.result.toString())
             }
-            Unit.asDynamic()
-        }
+        }.unsafeCast<(Event) -> Unit>()
+        click()
     }
+}
