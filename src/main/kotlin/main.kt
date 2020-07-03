@@ -526,9 +526,15 @@ fun HTMLCanvasElement.draw() {
         when (process.mode) {
             Mode.DEFAULT -> context.paint(lastCellCoords!!)
             Mode.EXPORT -> {
-                process.export += cell
                 context.apply {
-                    fillStyle = colorByStateExport[cell.isAlive]
+                    if (cell in process.export) {
+                        process.export -= cell
+                        fillStyle = colorByState[cell.isAlive]
+                    }
+                    else {
+                        process.export += cell
+                        fillStyle = colorByStateExport[cell.isAlive]
+                    }
                     fillRect(lastCellCoords!!.first * SIDE, lastCellCoords!!.second * SIDE, SIDE, SIDE)
                 }
             }
