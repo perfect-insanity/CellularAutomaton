@@ -38,16 +38,69 @@ const val FIELD_HEIGHT = 80
 val colorByState = mapOf(true to "#ffffff", false to "#000000")
 val colorByStateExport = mapOf(true to "#dcdcdc", false to "#696969")
 
-var timeout: Int? = null
-var delay = DEFAULT_DELAY
-var currentType = Type.CONWAY
-var automaton: CellularAutomaton = currentType.instance()
-var generation = 1
-var mode = Mode.DEFAULT
-val export = mutableListOf<Cell>()
+val process = AutomatonProcess()
 val canvas = document.getElementById("mainCanvas") as HTMLCanvasElement
 val context = canvas.getContext("2d") as CanvasRenderingContext2D
 val json = Json(JsonConfiguration.Stable)
+
+class AutomatonProcess {
+    var currentType = Type.CONWAY
+        set(value) {
+            field = value
+            automaton = value.instance(automaton.tor)
+        }
+    var automaton: CellularAutomaton = currentType.instance()
+        private set
+    var generation = 1
+        private set
+    private var timeout: Int? = null
+    var delay = DEFAULT_DELAY
+    var onRepeat: () -> Unit = {}
+    var onFinish: () -> Unit = {}
+    var mode = Mode.DEFAULT
+    val export = mutableListOf<Cell>()
+
+    private fun repeat() {
+        val next = automaton.restructure()
+        context.paint(automaton)
+
+        if (next) {
+            next(::repeat)
+        }
+        else
+            finish()
+    }
+
+    private fun next(action: () -> Unit) {
+        generation++
+        onRepeat()
+        timeout = window.setTimeout(action, delay)
+    }
+
+    private fun finish() {
+        if (timeout != null) {
+            onFinish()
+            window.clearTimeout(timeout!!)
+            timeout = null
+        }
+    }
+
+    fun invState() {
+        if (timeout == null)
+            repeat()
+        else
+            finish()
+    }
+
+    fun clear() {
+        finish()
+        automaton.tor.killAll()
+        context.paint(automaton)
+        generation = 1
+    }
+
+    fun isStarted() = timeout != null
+}
 
 enum class Type {
     CONWAY {
@@ -78,7 +131,6 @@ enum class Type {
             createLabel("0${nbsp}→${nbsp}1:", (props.conditions as ConwayGame.Conditions).zeroToOne)
             createLabel("1${nbsp}→${nbsp}0:", (props.conditions as ConwayGame.Conditions).oneToZero)
         }
-
 
         override fun instance(tor: Tor) = ConwayGame(
             FIELD_WIDTH, FIELD_HEIGHT,
@@ -160,9 +212,9 @@ fun main() {
     onUploadTextFile { result ->
         val (type, conditions, cells) = fromJSON(result)
         for (cell in cells) {
-            automaton.tor[cell.i, cell.j] = cell
+            process.automaton.tor[cell.i, cell.j] = cell
         }
-        context.paint(automaton)
+        context.paint(process.automaton)
     }
 
 }
@@ -208,29 +260,19 @@ interface MenuButtonGroupProps : RProps {
 val menuButtonGroupComponent = functionalComponent<MenuButtonGroupProps> { props ->
     buttonGroup {
         val startButtonTextVariants = mapOf(false to "Старт", true to "Стоп")
-        val (isStarted, setStarted) = useState(timeout != null)
-        val repeat = { action: () -> Unit ->
-            setStarted(true)
-            props.setGenerationText(++generation)
-            timeout = window.setTimeout(action, delay)
-        }
-        val finish = {
-            if (timeout != null) {
+        val (isStarted, setStarted) = useState(process.isStarted())
+
+        process.apply {
+            onRepeat = {
+                setStarted(true)
+                props.setGenerationText(generation)
+            }
+
+            onFinish = {
                 setStarted(false)
-                window.clearTimeout(timeout!!)
-                timeout = null
             }
         }
 
-        fun repaint() {
-            val next = automaton.restructure()
-            context.paint(automaton)
-
-            if (next)
-                repeat(::repaint)
-            else
-                finish()
-        }
         attrs {
             variant = "text"
             component = "span"
@@ -238,10 +280,7 @@ val menuButtonGroupComponent = functionalComponent<MenuButtonGroupProps> { props
         button {
             attrs {
                 onClick = {
-                    if (timeout == null)
-                        repaint()
-                    else
-                        finish()
+                    process.invState()
                 }
             }
             +startButtonTextVariants[isStarted]!!
@@ -249,11 +288,8 @@ val menuButtonGroupComponent = functionalComponent<MenuButtonGroupProps> { props
         button {
             attrs {
                 onClick = {
-                    finish()
-                    automaton.tor.killAll()
-                    context.paint(automaton)
-                    generation = 1
-                    props.setGenerationText(generation)
+                    process.clear()
+                    props.setGenerationText(process.generation)
                 }
             }
             +"Очистить"
@@ -272,12 +308,12 @@ val menuButtonGroupComponent = functionalComponent<MenuButtonGroupProps> { props
             attrs {
                 onClick = {
                     setSaving(!isSaving)
-                    mode = if (!isSaving) {
+                    process.mode = if (!isSaving) {
                         Mode.EXPORT
                     } else {
                         downloadTextFile(toJSON().toString(), "file.txt")
-                        export.clear()
-                        context.paint(automaton)
+                        process.export.clear()
+                        context.paint(process.automaton)
                         Mode.DEFAULT
                     }
                 }
@@ -299,7 +335,7 @@ val menuButtonGroupComponent = functionalComponent<MenuButtonGroupProps> { props
 
             button {
                 attrs {
-                    onClick = { mode = Mode.IMPORT }
+                    onClick = { process.mode = Mode.IMPORT }
                 }
                 +"Загрузить"
             }
@@ -317,13 +353,13 @@ val delaySliderComponent = functionalComponent<RProps> {
         }
         slider {
             attrs {
-                defaultValue = delay
+                defaultValue = process.delay
                 step = DELAY_SLIDER_STEP
                 min = MIN_DELAY
                 max = MAX_DELAY
                 valueLabelDisplay = "off"
                 onChange = { _, value ->
-                    delay = value
+                    process.delay = value
                 }
             }
         }
@@ -349,7 +385,7 @@ interface RulesDialogProps : RProps {
 }
 
 val rulesDialogComponent = functionalComponent<RulesDialogProps> { props ->
-    val (selectedType, selectType) = useState(currentType)
+    val (selectedType, selectType) = useState(process.currentType)
     dialog {
         val conditions = selectedType.conditions.copy()
         attrs {
@@ -382,13 +418,11 @@ val rulesDialogComponent = functionalComponent<RulesDialogProps> { props ->
                 attrs {
                     color = "primary"
                     onClick = {
-                        if (selectedType != currentType) {
-                            currentType = selectedType
-                            automaton = currentType.instance(automaton.tor)
-                            context.paint(automaton)
+                        if (selectedType != process.currentType) {
+                            process.currentType = selectedType
                         }
                         selectedType.conditions = conditions.copy()
-                        automaton.conditions = conditions.copy()
+                        process.automaton.conditions = conditions.copy()
 
                         props.openDialog(false)
                     }
@@ -479,17 +513,17 @@ fun HTMLCanvasElement.draw() {
     width = ceil((FIELD_WIDTH * SIDE)).toInt()
     height = ceil((FIELD_HEIGHT * SIDE)).toInt()
 
-    context.paint(automaton)
+    context.paint(process.automaton)
 
     var isMouseDown = false
     var lastCellCoords: Pair<Int, Int>? = null
 
     val onMouseDownOrMove = {
-        val cell = automaton.tor[lastCellCoords!!.first, lastCellCoords!!.second]
-        when (mode) {
+        val cell = process.automaton.tor[lastCellCoords!!.first, lastCellCoords!!.second]
+        when (process.mode) {
             Mode.DEFAULT -> context.paint(lastCellCoords!!)
             Mode.EXPORT -> {
-                export += cell
+                process.export += cell
                 context.apply {
                     fillStyle = colorByStateExport[cell.isAlive]
                     fillRect(lastCellCoords!!.first * SIDE, lastCellCoords!!.second * SIDE, SIDE, SIDE)
@@ -528,11 +562,11 @@ fun getCellByCoords(x: Double, y: Double, side: Double) = (x / side).toInt() to 
 
 fun CanvasRenderingContext2D.paint(coords: Pair<Int, Int>) {
     val (x, y) = coords
-    val cell = automaton.tor[x, y]
+    val cell = process.automaton.tor[x, y]
     if (cell.isAlive)
-        automaton.tor.killCell(cell)
+        process.automaton.tor.killCell(cell)
     else
-        automaton.tor.animateCell(cell)
+        process.automaton.tor.animateCell(cell)
 
     fillStyle = colorByState[cell.isAlive]
     fillRect(x * SIDE, y * SIDE, SIDE, SIDE)
@@ -554,9 +588,9 @@ fun Int.toBinaryString(length: Int): String {
 
 fun toJSON() = JsonObject(
     mapOf(
-        "type" to JsonPrimitive(currentType.toString()),
-        "conditions" to currentType.serialize(),
-        "cells" to JsonArray(export.map {
+        "type" to JsonPrimitive(process.currentType.toString()),
+        "conditions" to process.currentType.serialize(),
+        "cells" to JsonArray(process.export.map {
             json.toJson(Cell.serializer(), it)
         })
     )
@@ -564,11 +598,13 @@ fun toJSON() = JsonObject(
 
 fun fromJSON(jsonString: String): Triple<Type, CellularAutomaton.Conditions, List<Cell>> {
     val parsed = json.parseJson(jsonString)
-    val type = Type.valueOf(parsed.jsonObject["type"]?.primitive?.content
-        ?: throw IllegalStateException("type not defined")
+    val type = Type.valueOf(
+        parsed.jsonObject["type"]?.primitive?.content
+            ?: throw IllegalStateException("type not defined")
     )
-    val conditions = currentType.deserialize(parsed.jsonObject["conditions"]
-        ?: throw IllegalStateException("conditions not defined")
+    val conditions = process.currentType.deserialize(
+        parsed.jsonObject["conditions"]
+            ?: throw IllegalStateException("conditions not defined")
     )
     val cells = parsed.jsonObject["cells"]?.jsonArray?.content?.map { json.fromJson(Cell.serializer(), it) }
         ?: throw IllegalStateException("cells not defined")
