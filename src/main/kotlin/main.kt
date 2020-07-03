@@ -1,16 +1,24 @@
-import cellularAutomaton.CellularAutomaton
-import cellularAutomaton.ConwayGame
-import cellularAutomaton.Elementary
-import cellularAutomaton.Tor
+import cellularAutomaton.*
 import kotlinext.js.jsObject
 import kotlinx.css.*
+import kotlinx.html.InputType
+import kotlinx.html.id
+import kotlinx.serialization.json.*
 import materialUi.core.*
 import org.w3c.dom.CanvasRenderingContext2D
+import org.w3c.dom.HTMLAnchorElement
 import org.w3c.dom.HTMLCanvasElement
+import org.w3c.dom.HTMLInputElement
 import org.w3c.dom.events.Event
 import org.w3c.dom.events.MouseEvent
+import org.w3c.dom.url.URL
+import org.w3c.files.Blob
+import org.w3c.files.FileReader
+import org.w3c.files.get
 import react.*
 import react.dom.div
+import react.dom.input
+import react.dom.label
 import react.dom.render
 import styled.css
 import styled.styledDiv
@@ -28,56 +36,67 @@ const val SIDE = 8.0
 const val FIELD_WIDTH = 160
 const val FIELD_HEIGHT = 80
 val colorByState = mapOf(true to "#ffffff", false to "#000000")
+val colorByStateExport = mapOf(true to "#dcdcdc", false to "#696969")
 
 var timeout: Int? = null
 var delay = DEFAULT_DELAY
 var currentType = Type.CONWAY
 var automaton: CellularAutomaton = currentType.instance()
 var generation = 1
+var mode = Mode.DEFAULT
+val export = mutableListOf<Cell>()
 val canvas = document.getElementById("mainCanvas") as HTMLCanvasElement
 val context = canvas.getContext("2d") as CanvasRenderingContext2D
+val json = Json(JsonConfiguration.Stable)
 
 enum class Type {
     CONWAY {
         override val automatonName = "Игра Жизнь"
         override val possibleValues = 0..8
-        override var conditions: Map<Boolean, MutableList<Any>> =
-            mapOf(true to mutableListOf<Any>(3), false to mutableListOf<Any>(0, 1, 4, 5, 6, 7, 8))
+        override var conditions: CellularAutomaton.Conditions =
+            ConwayGame.Conditions(zeroToOne = mutableListOf(3), oneToZero = mutableListOf(0, 1, 4, 5, 6, 7, 8))
         override var checkboxesLabelComponent = functionalComponent<CheckboxesLabelProps> { props ->
-            for ((k, v) in props.conditions) {
+            val createLabel = { label: String, values: MutableList<Int> ->
                 div {
                     formControlLabel {
                         attrs {
-                            label = if (k)
-                                "0${nbsp}→${nbsp}1:"
-                            else
-                                "1${nbsp}→${nbsp}0:"
+                            this.label = label
                             labelPlacement = "start"
                             control = styledSpan {
                                 css {
                                     marginLeft = 16.px
                                 }
-                                possibleValues.forEach { value: Any ->
-                                    child(rulesCheckboxComponent(v, value, Any::toString))
+                                possibleValues.forEach { value ->
+                                    child(rulesCheckboxComponent(values, value, Any::toString))
                                 }
                             }
                         }
                     }
                 }
             }
+
+            createLabel("0${nbsp}→${nbsp}1:", (props.conditions as ConwayGame.Conditions).zeroToOne)
+            createLabel("1${nbsp}→${nbsp}0:", (props.conditions as ConwayGame.Conditions).oneToZero)
         }
+
 
         override fun instance(tor: Tor) = ConwayGame(
             FIELD_WIDTH, FIELD_HEIGHT,
             tor,
-            { it in conditions[false]!! }, { it in conditions[true]!! }
+            conditions as ConwayGame.Conditions
         )
+
+        override fun serialize() =
+            json.toJson(ConwayGame.Conditions.serializer(), conditions as ConwayGame.Conditions)
+
+        override fun deserialize(jsonElement: JsonElement) =
+            json.fromJson(ConwayGame.Conditions.serializer(), jsonElement)
     },
     ELEMENTARY {
         override val automatonName = "Элементарный автомат"
         override val possibleValues = 0..7
-        override var conditions: Map<Boolean, MutableList<Any>> =
-            mapOf(true to mutableListOf<Any>(0b110, 0b100, 0b011, 0b001))
+        override var conditions: CellularAutomaton.Conditions =
+            Elementary.Conditions(toOne = mutableListOf(0b110, 0b100, 0b011, 0b001))
         override var checkboxesLabelComponent = functionalComponent<CheckboxesLabelProps> { props ->
             div {
                 formControlLabel {
@@ -88,10 +107,13 @@ enum class Type {
                             css {
                                 marginLeft = 16.px
                             }
-                            possibleValues.forEach { value: Any ->
+                            possibleValues.forEach { value ->
                                 child(
-                                    rulesCheckboxComponent(props.conditions[true]!!, value) {
-                                        (it as Int).toBinaryString(3)
+                                    rulesCheckboxComponent(
+                                        (props.conditions as Elementary.Conditions).toOne,
+                                        value
+                                    ) {
+                                        it.toBinaryString(3)
                                     }
                                 )
                             }
@@ -103,58 +125,46 @@ enum class Type {
 
         override fun instance(tor: Tor) = Elementary(
             FIELD_WIDTH, FIELD_HEIGHT,
-            tor
-        ) { it in conditions[true]!! }
+            tor,
+            conditions as Elementary.Conditions
+        )
+
+        override fun serialize() =
+            json.toJson(Elementary.Conditions.serializer(), conditions as Elementary.Conditions)
+
+        override fun deserialize(jsonElement: JsonElement) =
+            json.fromJson(Elementary.Conditions.serializer(), jsonElement)
     };
 
     abstract val automatonName: String
     abstract val possibleValues: Iterable<Any>
-    abstract var conditions: Map<Boolean, MutableList<Any>>
+    abstract var conditions: CellularAutomaton.Conditions
     abstract var checkboxesLabelComponent: FunctionalComponent<CheckboxesLabelProps>
 
     abstract fun instance(tor: Tor = Tor(FIELD_WIDTH, FIELD_HEIGHT)): CellularAutomaton
+    abstract fun serialize(): JsonElement
+    abstract fun deserialize(jsonElement: JsonElement): CellularAutomaton.Conditions
+}
+
+enum class Mode {
+    DEFAULT, IMPORT, EXPORT
 }
 
 fun main() {
-    canvas.apply {
-        width = ceil((FIELD_WIDTH * SIDE)).toInt()
-        height = ceil((FIELD_HEIGHT * SIDE)).toInt()
-    }
-
-    context.paint(automaton)
-    canvas.apply {
-        var isMouseDown = false
-        var lastCellCoords: Pair<Int, Int>? = null
-
-        addEventListener("mousedown", { event ->
-            isMouseDown = true
-            if (event is MouseEvent) {
-                lastCellCoords = getCellByCoords(event.offsetX, event.offsetY, SIDE)
-                context.paint(lastCellCoords!!)
-            }
-        })
-
-        val onMouseUpOrLeave: (Event) -> Unit = {
-            isMouseDown = false
-            lastCellCoords = null
-        }
-        addEventListener("mouseup", onMouseUpOrLeave)
-        addEventListener("mouseleave", onMouseUpOrLeave)
-
-        addEventListener("mousemove", { event ->
-            if (event is MouseEvent && isMouseDown) {
-                val curCellCoords = getCellByCoords(event.offsetX, event.offsetY, SIDE)
-                if (curCellCoords != lastCellCoords) {
-                    lastCellCoords = curCellCoords
-                    context.paint(curCellCoords)
-                }
-            }
-        })
-    }
+    canvas.draw()
 
     render(document.getElementById("main")) {
         child(mainComponent)
     }
+
+    onUploadTextFile { result ->
+        val (type, conditions, cells) = fromJSON(result)
+        for (cell in cells) {
+            automaton.tor[cell.i, cell.j] = cell
+        }
+        context.paint(automaton)
+    }
+
 }
 
 val mainComponent = functionalComponent<RProps> {
@@ -197,16 +207,16 @@ interface MenuButtonGroupProps : RProps {
 
 val menuButtonGroupComponent = functionalComponent<MenuButtonGroupProps> { props ->
     buttonGroup {
-        val buttonTextVariants = mapOf(true to "Старт", false to "Стоп")
-        val (startButtonText, setStartButtonText) = useState(buttonTextVariants[timeout == null]!!)
+        val startButtonTextVariants = mapOf(false to "Старт", true to "Стоп")
+        val (isStarted, setStarted) = useState(timeout != null)
         val repeat = { action: () -> Unit ->
-            setStartButtonText(buttonTextVariants[false]!!)
+            setStarted(true)
             props.setGenerationText(++generation)
             timeout = window.setTimeout(action, delay)
         }
         val finish = {
             if (timeout != null) {
-                setStartButtonText(buttonTextVariants[true]!!)
+                setStarted(false)
                 window.clearTimeout(timeout!!)
                 timeout = null
             }
@@ -234,7 +244,7 @@ val menuButtonGroupComponent = functionalComponent<MenuButtonGroupProps> { props
                         finish()
                 }
             }
-            +startButtonText
+            +startButtonTextVariants[isStarted]!!
         }
         button {
             attrs {
@@ -253,6 +263,46 @@ val menuButtonGroupComponent = functionalComponent<MenuButtonGroupProps> { props
                 onClick = { props.openDialog(true) }
             }
             +"Поменять правила"
+        }
+
+        val saveButtonTextVariants = mapOf(true to "Готово", false to "Сохранить")
+        val (isSaving, setSaving) = useState(false)
+
+        button {
+            attrs {
+                onClick = {
+                    setSaving(!isSaving)
+                    mode = if (!isSaving) {
+                        Mode.EXPORT
+                    } else {
+                        downloadTextFile(toJSON().toString(), "file.txt")
+                        export.clear()
+                        context.paint(automaton)
+                        Mode.DEFAULT
+                    }
+                }
+            }
+            +saveButtonTextVariants[isSaving]!!
+        }
+        input {
+            attrs {
+                id = "download-file"
+                multiple = false
+                accept = "text/plain"
+                type = InputType.file
+            }
+        }
+        label {
+            attrs {
+                htmlFor = "download-file"
+            }
+
+            button {
+                attrs {
+                    onClick = { mode = Mode.IMPORT }
+                }
+                +"Загрузить"
+            }
         }
     }
 }
@@ -301,7 +351,7 @@ interface RulesDialogProps : RProps {
 val rulesDialogComponent = functionalComponent<RulesDialogProps> { props ->
     val (selectedType, selectType) = useState(currentType)
     dialog {
-        val conditions = selectedType.conditions.mapValues { it.value.toMutableList() }
+        val conditions = selectedType.conditions.copy()
         attrs {
             open = props.isDialogOpened
             onClose = { props.openDialog(false) }
@@ -337,7 +387,8 @@ val rulesDialogComponent = functionalComponent<RulesDialogProps> { props ->
                             automaton = currentType.instance(automaton.tor)
                             context.paint(automaton)
                         }
-                        currentType.conditions = conditions.mapValues { it.value.toMutableList() }
+                        selectedType.conditions = conditions.copy()
+                        automaton.conditions = conditions.copy()
 
                         props.openDialog(false)
                     }
@@ -389,13 +440,13 @@ val typeSelectComponent = functionalComponent<TypeSelectProps> { props ->
 }
 
 interface CheckboxesLabelProps : RProps {
-    var conditions: Map<Boolean, MutableList<Any>>
+    var conditions: CellularAutomaton.Conditions
 }
 
-fun rulesCheckboxComponent(
-    values: MutableList<Any>,
-    value: Any,
-    getLabel: (Any) -> String
+fun <T> rulesCheckboxComponent(
+    values: MutableList<T>,
+    value: T,
+    getLabel: (T) -> String
 ) = functionalComponent<RProps> {
     styledSpan {
         css {
@@ -422,6 +473,55 @@ fun rulesCheckboxComponent(
             }
         }
     }
+}
+
+fun HTMLCanvasElement.draw() {
+    width = ceil((FIELD_WIDTH * SIDE)).toInt()
+    height = ceil((FIELD_HEIGHT * SIDE)).toInt()
+
+    context.paint(automaton)
+
+    var isMouseDown = false
+    var lastCellCoords: Pair<Int, Int>? = null
+
+    val onMouseDownOrMove = {
+        val cell = automaton.tor[lastCellCoords!!.first, lastCellCoords!!.second]
+        when (mode) {
+            Mode.DEFAULT -> context.paint(lastCellCoords!!)
+            Mode.EXPORT -> {
+                export += cell
+                context.apply {
+                    fillStyle = colorByStateExport[cell.isAlive]
+                    fillRect(lastCellCoords!!.first * SIDE, lastCellCoords!!.second * SIDE, SIDE, SIDE)
+                }
+            }
+            Mode.IMPORT -> {
+            }
+        }
+    }
+    addEventListener("mousedown", { event ->
+        isMouseDown = true
+        if (event is MouseEvent) {
+            lastCellCoords = getCellByCoords(event.offsetX, event.offsetY, SIDE)
+            onMouseDownOrMove()
+        }
+    })
+    addEventListener("mousemove", { event ->
+        if (event is MouseEvent && isMouseDown) {
+            val curCellCoords = getCellByCoords(event.offsetX, event.offsetY, SIDE)
+            if (curCellCoords != lastCellCoords) {
+                lastCellCoords = curCellCoords
+                onMouseDownOrMove()
+            }
+        }
+    })
+
+    val onMouseUpOrLeave: (Event) -> Unit = {
+        isMouseDown = false
+        lastCellCoords = null
+    }
+    addEventListener("mouseup", onMouseUpOrLeave)
+    addEventListener("mouseleave", onMouseUpOrLeave)
 }
 
 fun getCellByCoords(x: Double, y: Double, side: Double) = (x / side).toInt() to (y / side).toInt()
@@ -451,3 +551,48 @@ fun Int.toBinaryString(length: Int): String {
     val zeros = with(length - res.length) { if (this > 0) "0".repeat(this) else "" }
     return zeros + res
 }
+
+fun toJSON() = JsonObject(
+    mapOf(
+        "type" to JsonPrimitive(currentType.toString()),
+        "conditions" to currentType.serialize(),
+        "cells" to JsonArray(export.map {
+            json.toJson(Cell.serializer(), it)
+        })
+    )
+)
+
+fun fromJSON(jsonString: String): Triple<Type, CellularAutomaton.Conditions, List<Cell>> {
+    val parsed = json.parseJson(jsonString)
+    val type = Type.valueOf(parsed.jsonObject["type"]?.primitive?.content
+        ?: throw IllegalStateException("type not defined")
+    )
+    val conditions = currentType.deserialize(parsed.jsonObject["conditions"]
+        ?: throw IllegalStateException("conditions not defined")
+    )
+    val cells = parsed.jsonObject["cells"]?.jsonArray?.content?.map { json.fromJson(Cell.serializer(), it) }
+        ?: throw IllegalStateException("cells not defined")
+
+    return Triple(type, conditions, cells)
+}
+
+fun downloadTextFile(text: String, fileName: String) =
+    (document.createElement("a") as HTMLAnchorElement).apply {
+        href = URL.createObjectURL(Blob(arrayOf(text)))
+        download = fileName
+        document.body!!.appendChild(this)
+        click()
+        document.body!!.removeChild(this)
+    }
+
+fun onUploadTextFile(onLoad: (String) -> Unit) =
+    (document.getElementById("download-file") as HTMLInputElement).apply {
+        onchange = {
+            val fileReader = FileReader()
+            files!![0]?.let { fileReader.readAsText(it) }
+            fileReader.onload = {
+                onLoad(fileReader.result.toString())
+            }
+            Unit.asDynamic()
+        }
+    }

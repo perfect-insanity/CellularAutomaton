@@ -1,10 +1,20 @@
 package cellularAutomaton
 
+import kotlinx.serialization.Serializable
+
 class Elementary(
-        private val width: Int, private val height: Int,
-        tor: Tor,
-        val oneCondition: (Int) -> Boolean
+    private val width: Int, private val height: Int,
+    tor: Tor,
+    override var conditions: CellularAutomaton.Conditions
 ) : CellularAutomaton(width, height, tor) {
+
+    @Serializable
+    class Conditions(
+        val toOne: MutableList<Int>
+    ) : CellularAutomaton.Conditions() {
+        override fun copy() = Conditions(toOne.toMutableList())
+    }
+
     override fun nextGeneration(): NextGeneration {
         val mustDie = HashSet<Cell>()
         val mustBorn = HashSet<Cell>()
@@ -17,9 +27,9 @@ class Elementary(
                     seq *= 2
                     seq += if (neighbor.isAlive) 1 else 0
                 }
-                if (cell.isAlive && !oneCondition(seq))
+                if (cell.isAlive && seq !in (conditions as Conditions).toOne)
                     mustDie.add(cell)
-                else if (!cell.isAlive && oneCondition(seq))
+                else if (!cell.isAlive && seq in (conditions as Conditions).toOne)
                     mustBorn.add(cell)
             }
         }

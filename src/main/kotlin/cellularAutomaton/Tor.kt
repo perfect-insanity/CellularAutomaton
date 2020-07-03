@@ -54,6 +54,14 @@ class Tor(width: Int, height: Int) {
         return cells[converted.first][converted.second]
     }
 
+    operator fun set(i: Int, j: Int, value: Cell) {
+        if (value.isAlive)
+            liveCells.add(value)
+        else
+            liveCells.remove(value)
+        cells[i][j] = value
+    }
+
     fun killAll() {
         liveCells.forEach { it.isAlive = false }
         liveCells.clear()

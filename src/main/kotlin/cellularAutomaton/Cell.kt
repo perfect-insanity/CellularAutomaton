@@ -1,9 +1,10 @@
 package cellularAutomaton
 
-data class Cell(
-        val i: Int, val j: Int
-) {
-    var isAlive: Boolean = false
+import kotlinx.serialization.*
 
-    override fun toString(): String = "$i, $j"
-}
+@Serializable
+data class Cell(
+    val i: Int,
+    val j: Int,
+    var isAlive: Boolean = false
+)

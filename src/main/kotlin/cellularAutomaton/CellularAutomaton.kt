@@ -1,8 +1,11 @@
 package cellularAutomaton
 
 abstract class CellularAutomaton(width: Int, height: Int, val tor: Tor = Tor(width, height)) {
-    private var generation = 1
+    abstract var conditions: Conditions
 
+    abstract class Conditions {
+        abstract fun copy(): Conditions
+    }
     data class NextGeneration(val mustDie: MutableSet<Cell>, val mustBorn: MutableSet<Cell>)
 
     abstract fun nextGeneration(): NextGeneration
@@ -22,10 +25,8 @@ abstract class CellularAutomaton(width: Int, height: Int, val tor: Tor = Tor(wid
 
         if (newGenLiveCells == tor.liveCells)
             return false
-        else {
+        else
             tor.liveCells = newGenLiveCells
-            generation++
-        }
 
         return true
     }

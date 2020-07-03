@@ -1,10 +1,20 @@
 package cellularAutomaton
 
+import kotlinx.serialization.Serializable
+
 class ConwayGame(
-        width: Int, height: Int,
-        tor: Tor,
-        val deathCondition: (Int) -> Boolean, val birthCondition: (Int) -> Boolean
+    width: Int, height: Int,
+    tor: Tor,
+    override var conditions: CellularAutomaton.Conditions
 ) : CellularAutomaton(width, height, tor) {
+
+    @Serializable
+    class Conditions(
+        var zeroToOne: MutableList<Int>,
+        var oneToZero: MutableList<Int>
+    ) : CellularAutomaton.Conditions() {
+        override fun copy() = Conditions(zeroToOne.toMutableList(), oneToZero.toMutableList())
+    }
 
     override fun nextGeneration(): NextGeneration {
         val mustDie = mutableSetOf<Cell>()
@@ -14,10 +24,10 @@ class ConwayGame(
             for (cell in row) {
                 val aliveNeighbors = getNeighbors(cell).count { it != null && it.isAlive }
 
-                if (cell.isAlive && deathCondition(aliveNeighbors)) {
+                if (cell.isAlive && aliveNeighbors in (conditions as Conditions).oneToZero) {
                     mustDie.add(cell)
                 }
-                if (!cell.isAlive && birthCondition(aliveNeighbors)) {
+                if (!cell.isAlive && aliveNeighbors in (conditions as Conditions).zeroToOne) {
                     mustBorn.add(cell)
                 }
             }
