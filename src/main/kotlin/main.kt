@@ -38,13 +38,13 @@ const val FIELD_HEIGHT = 80
 val colorByState = mapOf(true to "#ffffff", false to "#000000")
 val colorByStateExport = mapOf(true to "#dcdcdc", false to "#696969")
 
-val process = AutomatonProcess()
+val process = AutomatonProcess(Type.CONWAY)
 val canvas = document.getElementById("mainCanvas") as HTMLCanvasElement
 val context = canvas.getContext("2d") as CanvasRenderingContext2D
 val json = Json(JsonConfiguration.Stable)
 
-class AutomatonProcess {
-    var currentType = Type.CONWAY
+class AutomatonProcess(initType: Type) {
+    var currentType = initType
         set(value) {
             field = value
             automaton = value.instance(automaton.tor)
@@ -55,6 +55,7 @@ class AutomatonProcess {
         private set
     private var timeout: Int? = null
     var delay = DEFAULT_DELAY
+    var onChangeAutomatonState: () -> Unit = {}
     var onRepeat: () -> Unit = {}
     var onFinish: () -> Unit = {}
     var mode = Mode.DEFAULT
@@ -62,7 +63,7 @@ class AutomatonProcess {
 
     private fun repeat() {
         val next = automaton.restructure()
-        context.paint(automaton)
+        onChangeAutomatonState()
 
         if (next) {
             next(::repeat)
@@ -95,7 +96,7 @@ class AutomatonProcess {
     fun clear() {
         finish()
         automaton.tor.killAll()
-        context.paint(automaton)
+        onChangeAutomatonState()
         generation = 1
     }
 
@@ -203,8 +204,10 @@ enum class Mode {
 }
 
 fun main() {
+    process.onChangeAutomatonState = {
+        context.paint(process.automaton)
+    }
     canvas.draw()
-
     render(document.getElementById("main")) {
         child(mainComponent)
     }
