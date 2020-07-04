@@ -13,5 +13,6 @@ external interface ButtonProps: RProps {
     var className: String
     var onClick: (Event?) -> Unit
     var color: String
+    var disabled: Boolean
 }
 

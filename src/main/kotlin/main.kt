@@ -76,7 +76,7 @@ class AutomatonProcess(initType: Type) {
         timeout = window.setTimeout(action, delay)
     }
 
-    private fun finish() {
+    fun finish() {
         if (timeout != null) {
             onFinish()
             window.clearTimeout(timeout!!)
@@ -252,8 +252,11 @@ interface MenuButtonGroupProps : RProps {
 
 val menuButtonGroupComponent = functionalComponent<MenuButtonGroupProps> { props ->
     buttonGroup {
-        val startButtonTextVariants = mapOf(false to "Старт", true to "Стоп")
+        val startButtonTextVariants = mapOf(true to "Стоп", false to "Старт")
         val (isStarted, setStarted) = useState(process.isStarted())
+
+        val saveButtonTextVariants = mapOf(true to "Готово", false to "Сохранить")
+        val (isSaving, setSaving) = useState(false)
 
         process.apply {
             onRepeat = {
@@ -272,6 +275,7 @@ val menuButtonGroupComponent = functionalComponent<MenuButtonGroupProps> { props
         }
         button {
             attrs {
+                disabled = isSaving
                 onClick = {
                     process.invState()
                 }
@@ -293,14 +297,12 @@ val menuButtonGroupComponent = functionalComponent<MenuButtonGroupProps> { props
             }
             +"Поменять правила"
         }
-
-        val saveButtonTextVariants = mapOf(true to "Готово", false to "Сохранить")
-        val (isSaving, setSaving) = useState(false)
         button {
             attrs {
                 onClick = {
                     setSaving(!isSaving)
                     process.mode = if (!isSaving) {
+                        process.finish()
                         Mode.EXPORT
                     } else {
                         downloadTextFile(toJSON().toString(), "file.txt")
