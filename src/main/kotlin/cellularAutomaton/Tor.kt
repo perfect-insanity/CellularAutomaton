@@ -18,36 +18,17 @@ class Tor(width: Int, height: Int) {
 
     fun killCell(cell: Cell) = liveCells.remove(cell).also { cell.isAlive = false }
 
-    private fun convert(_i: Int, _j: Int): Pair<Int, Int> {
-        var i = _i
-        var j = _j
+    private fun convert(i: Int, j: Int): Pair<Int, Int> {
+        var remI = i % cells.size
+        if (remI < 0)
+            remI += cells.size
 
-        while (i >= cells.size) {
-            i -= cells.size
-        }
-        while (i < 0) {
-            i += cells.size
-        }
-        while (j >= cells[i].size) {
-            j -= cells[i].size
-        }
-        while (j < 0) {
-            j += cells[i].size
-        }
-        return i to j
+        var remJ = j % cells[remI].size
+        if (remJ < 0)
+            remJ += cells[remI].size
+
+        return remI to remJ
     }
-//        Pair(
-//                when {
-//                    i >= cells.size -> i % cells.size
-//                    i < 0 -> i % cells.size + cells.size
-//                    else -> i
-//                },
-//                when {
-//                    j >= cells[i].size -> j % cells[i].size
-//                    j < 0 -> j % cells[i].size + cells[i].size
-//                    else -> j
-//                }
-//        )
 
     operator fun get(i: Int, j: Int): Cell {
         val converted = convert(i, j)
